@@ -1,23 +1,34 @@
 # Text → Calendar (Text-to-ICS Downloader)
 
 Paste any text that mentions one or more events (an email, a copied Excel/TSV row,
-a chat message, free-form notes) and get back a **downloadable calendar file**
-(`.ics` / `.ical`) — or an **"Add to Google Calendar"** link.
+a chat message, free-form notes), click **Download**, and get a single `.ics` file
+with all the events in it.
 
-- Extracts **multiple events** from one blob of text.
-- Detects **reminders** in the text ("remind me 2 days before") and lets you set them per event.
+The flow is deliberately one-shot:
+
+```
+paste text  →  click Download
+            →  Qwen3 (vLLM) extracts ALL events (title + date/time)
+            →  reminder in the text? apply it per event.
+               none found?           ONE popup asks (choice applies to all events).
+            →  one .ics with every event downloads to your Downloads folder.
+```
+
+- Extracts **multiple events** into **one `.ics`** — no review/edit screen.
+- Uses a **reminder found in the text** ("remind me 2 days before") when present;
+  otherwise asks once via a popup (None / at time / 10 min / 1 hour / 1 day before).
 - Produces a standards-compliant iCalendar file (RFC 5545) with `VEVENT` + `VALARM`.
 - Works **today** with a built-in rules-based fallback — and upgrades to **Qwen3 on vLLM**
   (LoRA-ready) by changing a single environment variable. No code changes.
 
-> This is the simple, highly-functional MVP. The architecture is intentionally one
-> Python service + one Next.js frontend. The full roadmap (gRPC split, Postgres,
-> tiered LLM routing, OCR, OAuth insert, eval harness) layers in on top without a rewrite.
+> This is the simple MVP. The architecture is intentionally one Python service + one
+> Next.js frontend. The full roadmap (gRPC split, Postgres, tiered LLM routing, OCR,
+> OAuth insert, eval harness) layers in on top without a rewrite.
 
 ## Architecture (MVP)
 
 ```
-[ Next.js frontend ]           paste text, review events, pick reminders, download
+[ Next.js frontend ]           textarea + Download button + reminder popup
         │  HTTP/JSON
         ▼
 [ FastAPI backend ]            one Python service
@@ -26,16 +37,11 @@ a chat message, free-form notes) and get back a **downloadable calendar file**
    └── ics_builder.py          icalendar: VEVENT + VALARM, correct MIME/escaping
 ```
 
-## Format choices (what the UI offers, and why)
+## The downloaded file
 
-- **`.ics`** — the universal iCalendar file. Opens in Apple Calendar, Outlook, and
-  imports into Google Calendar. **Recommended for everyone.**
-- **`.ical`** — the *same file*, different extension. Offered for users who expect that name.
-- **Add to Google Calendar** — not a download; a prefilled Google event link in the
-  browser. Great for a single event; for many events the `.ics` import is better.
-
-Downloads land in the browser's normal Downloads folder (triggered via a Blob with
-`text/calendar` MIME and a sensible filename).
+The UI produces a single **`.ics`** file (universal iCalendar — opens in Apple
+Calendar and Outlook, imports into Google Calendar). It saves to the browser's
+normal Downloads folder, triggered via a Blob with `text/calendar` MIME.
 
 ## Quick start
 
