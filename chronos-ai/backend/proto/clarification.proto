@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package chronos.clarification.v1;
+
+import "common.proto";
+
+message ClarificationQuestion {
+  string id = 1;
+  string event_id = 2;
+  string field = 3;
+  string question = 4;
+  repeated string suggested_answers = 5;  // optional choices for the UI
+}
+
+message GenerateQuestionsRequest {
+  chronos.common.v1.RequestContext context = 1;
+  repeated chronos.common.v1.Event events = 2;
+}
+
+message GenerateQuestionsResponse {
+  repeated ClarificationQuestion questions = 1;
+}
+
+message ClarificationAnswer {
+  string question_id = 1;
+  string event_id = 2;
+  string field = 3;
+  string answer = 4;
+}
+
+message ApplyAnswersRequest {
+  chronos.common.v1.RequestContext context = 1;
+  repeated chronos.common.v1.Event events = 2;
+  repeated ClarificationAnswer answers = 3;
+}
+
+message ApplyAnswersResponse {
+  repeated chronos.common.v1.Event events = 1;
+}
+
+service ClarificationService {
+  rpc GenerateClarificationQuestions(GenerateQuestionsRequest) returns (GenerateQuestionsResponse);
+  rpc ApplyClarificationAnswers(ApplyAnswersRequest) returns (ApplyAnswersResponse);
+}

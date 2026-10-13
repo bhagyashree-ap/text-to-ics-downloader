@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package chronos.extraction.v1;
+
+import "common.proto";
+
+message ExtractEventsRequest {
+  chronos.common.v1.RequestContext context = 1;
+  string text = 2;
+  string email_subject = 3;
+  string sender = 4;
+}
+
+message ExtractEventsResponse {
+  repeated chronos.common.v1.Event events = 1;
+  bool used_mock = 2;              // true when the deterministic mock provider ran
+  string model = 3;               // model name/id actually used
+  string extraction_note = 4;     // non-sensitive operational note (e.g. "truncated")
+}
+
+service AIExtractionService {
+  rpc ExtractEvents(ExtractEventsRequest) returns (ExtractEventsResponse);
+}

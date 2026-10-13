@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package chronos.validation.v1;
+
+import "common.proto";
+
+message ValidateEventsRequest {
+  chronos.common.v1.RequestContext context = 1;
+  repeated chronos.common.v1.Event events = 2;
+}
+
+message ValidateEventsResponse {
+  // Events are returned with validation_status + issues populated.
+  repeated chronos.common.v1.Event events = 1;
+}
+
+service EventValidationService {
+  rpc ValidateEvents(ValidateEventsRequest) returns (ValidateEventsResponse);
+}

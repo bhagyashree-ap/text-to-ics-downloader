@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package chronos.reminder.v1;
+
+import "common.proto";
+
+message ValidateReminderSettingsRequest {
+  chronos.common.v1.RequestContext context = 1;
+  repeated chronos.common.v1.Reminder reminders = 2;
+}
+
+message ValidateReminderSettingsResponse {
+  bool valid = 1;
+  repeated chronos.common.v1.ValidationIssue issues = 2;
+  repeated chronos.common.v1.Reminder normalized = 3;
+}
+
+message BuildReminderSpecsRequest {
+  chronos.common.v1.RequestContext context = 1;
+  repeated chronos.common.v1.Event events = 2;
+  // Batch-level default applied to events that have no reminders of their own.
+  repeated chronos.common.v1.Reminder default_reminders = 3;
+}
+
+message BuildReminderSpecsResponse {
+  repeated chronos.common.v1.Event events = 1;
+}
+
+service ReminderService {
+  rpc ValidateReminderSettings(ValidateReminderSettingsRequest) returns (ValidateReminderSettingsResponse);
+  rpc BuildReminderSpecifications(BuildReminderSpecsRequest) returns (BuildReminderSpecsResponse);
+}

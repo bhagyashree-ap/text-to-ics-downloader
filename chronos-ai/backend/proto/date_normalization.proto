@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package chronos.normalize.v1;
+
+import "common.proto";
+
+message NormalizeEventsRequest {
+  chronos.common.v1.RequestContext context = 1;
+  repeated chronos.common.v1.Event events = 2;
+}
+
+message NormalizeEventsResponse {
+  repeated chronos.common.v1.Event events = 1;
+}
+
+service DateNormalizationService {
+  rpc NormalizeEvents(NormalizeEventsRequest) returns (NormalizeEventsResponse);
+}

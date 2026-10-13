@@ -1,0 +1,60 @@
+# Local multi-service dev. The MVP runs the gRPC services in one container and the
+# FastAPI gateway in another, both from the same backend image. The gateway reaches
+# gRPC via the service name `grpc` (container-to-container), not localhost.
+services:
+  grpc:
+    build: ./backend
+    command: python -m app.grpc_servers.server
+    environment:
+      APP_ENV: development
+      QWEN_PROVIDER: ${QWEN_PROVIDER:-mock}
+      QWEN_MODEL: ${QWEN_MODEL:-Qwen/Qwen2.5-14B-Instruct}
+      QWEN_API_BASE_URL: ${QWEN_API_BASE_URL:-}
+      QWEN_API_KEY: ${QWEN_API_KEY:-}
+      DEFAULT_TIMEZONE: ${DEFAULT_TIMEZONE:-UTC}
+      GRPC_PORT: "50051"
+      ARTIFACT_STORAGE_PATH: /data/artifacts
+    volumes:
+      - artifacts:/data/artifacts
+    ports:
+      - "50051:50051"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import grpc,sys; from grpc_health.v1 import health_pb2,health_pb2_grpc; ch=grpc.insecure_channel('localhost:50051'); grpc.channel_ready_future(ch).result(timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  gateway:
+    build: ./backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    environment:
+      APP_ENV: development
+      # All internal targets point at the grpc container.
+      GRPC_INPUT_PROCESSING_TARGET: grpc:50051
+      GRPC_AI_EXTRACTION_TARGET: grpc:50051
+      GRPC_DATE_NORMALIZATION_TARGET: grpc:50051
+      GRPC_EVENT_VALIDATION_TARGET: grpc:50051
+      GRPC_CLARIFICATION_TARGET: grpc:50051
+      GRPC_REMINDER_TARGET: grpc:50051
+      GRPC_ICS_GENERATION_TARGET: grpc:50051
+      GRPC_ARTIFACT_TARGET: grpc:50051
+      ARTIFACT_STORAGE_PATH: /data/artifacts
+    volumes:
+      - artifacts:/data/artifacts
+    ports:
+      - "8000:8000"
+    depends_on:
+      grpc:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    environment:
+      NEXT_PUBLIC_API_BASE: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - gateway
+
+volumes:
+  artifacts:

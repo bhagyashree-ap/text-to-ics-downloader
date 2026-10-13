@@ -1,0 +1,14 @@
+[project]
+name = "chronos-ai-backend"
+version = "1.0.0"
+description = "AI-powered universal calendar event generator (Python + gRPC + Qwen)."
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

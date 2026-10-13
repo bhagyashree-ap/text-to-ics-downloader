@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package chronos.artifact.v1;
+
+import "common.proto";
+
+message CreateArtifactRequest {
+  chronos.common.v1.RequestContext context = 1;
+  bytes content = 2;
+  string content_type = 3;
+  string suggested_filename = 4;
+}
+
+message Artifact {
+  string artifact_id = 1;
+  string filename = 2;
+  string content_type = 3;
+  int64 size_bytes = 4;
+  int64 expires_at_unix = 5;
+}
+
+message CreateArtifactResponse {
+  Artifact artifact = 1;
+}
+
+message GetArtifactRequest {
+  chronos.common.v1.RequestContext context = 1;
+  string artifact_id = 2;
+}
+
+message GetArtifactResponse {
+  Artifact artifact = 1;
+  bytes content = 2;
+}
+
+message DeleteArtifactRequest {
+  chronos.common.v1.RequestContext context = 1;
+  string artifact_id = 2;
+}
+
+message DeleteArtifactResponse {
+  bool deleted = 1;
+}
+
+service ArtifactService {
+  rpc CreateArtifact(CreateArtifactRequest) returns (CreateArtifactResponse);
+  rpc GetArtifact(GetArtifactRequest) returns (GetArtifactResponse);
+  rpc DeleteArtifact(DeleteArtifactRequest) returns (DeleteArtifactResponse);
+}

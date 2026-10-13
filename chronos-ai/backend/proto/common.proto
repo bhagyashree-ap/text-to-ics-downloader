@@ -1,0 +1,155 @@
+syntax = "proto3";
+
+package chronos.common.v1;
+
+// Shared message types used across Chronos AI gRPC services.
+//
+// Versioning rules (spec section 5):
+//  - Never reuse a field number after deletion; add `reserved` for removed ones.
+//  - Prefer typed nested messages over opaque strings.
+//  - Represent local wall-clock date/time SEPARATELY from UTC instants.
+
+// A calendar date with no time component (local).
+message LocalDate {
+  int32 year = 1;
+  int32 month = 2;  // 1-12
+  int32 day = 3;    // 1-31
+}
+
+// A local time-of-day with no date and no zone.
+message LocalTime {
+  int32 hour = 1;    // 0-23
+  int32 minute = 2;  // 0-59
+  int32 second = 3;  // 0-59
+}
+
+enum EventCategory {
+  EVENT_CATEGORY_UNSPECIFIED = 0;
+  EVENT_CATEGORY_MEETING = 1;
+  EVENT_CATEGORY_EXAM = 2;
+  EVENT_CATEGORY_DEADLINE = 3;
+  EVENT_CATEGORY_APPOINTMENT = 4;
+  EVENT_CATEGORY_TRAVEL = 5;
+  EVENT_CATEGORY_HOLIDAY = 6;
+  EVENT_CATEGORY_CLASS = 7;
+  EVENT_CATEGORY_ANNOUNCEMENT = 8;
+  EVENT_CATEGORY_OTHER = 9;
+}
+
+enum Provenance {
+  PROVENANCE_UNSPECIFIED = 0;
+  PROVENANCE_STATED = 1;
+  PROVENANCE_INFERRED = 2;
+  PROVENANCE_USER = 3;
+  PROVENANCE_DEFAULTED = 4;
+  PROVENANCE_MISSING = 5;
+  PROVENANCE_CONFLICTING = 6;
+}
+
+enum ValidationStatus {
+  VALIDATION_STATUS_UNSPECIFIED = 0;
+  VALIDATION_STATUS_VALID = 1;
+  VALIDATION_STATUS_VALID_WITH_WARNINGS = 2;
+  VALIDATION_STATUS_REQUIRES_CLARIFICATION = 3;
+  VALIDATION_STATUS_INVALID = 4;
+}
+
+enum IssueSeverity {
+  ISSUE_SEVERITY_UNSPECIFIED = 0;
+  ISSUE_SEVERITY_WARNING = 1;
+  ISSUE_SEVERITY_ERROR = 2;
+}
+
+enum ReminderUnit {
+  REMINDER_UNIT_UNSPECIFIED = 0;
+  REMINDER_UNIT_MINUTES = 1;
+  REMINDER_UNIT_HOURS = 2;
+  REMINDER_UNIT_DAYS = 3;
+  REMINDER_UNIT_WEEKS = 4;
+}
+
+enum ReminderAnchor {
+  REMINDER_ANCHOR_UNSPECIFIED = 0;
+  REMINDER_ANCHOR_START = 1;
+  REMINDER_ANCHOR_END = 2;
+}
+
+enum RecurrenceFreq {
+  RECURRENCE_FREQ_UNSPECIFIED = 0;
+  RECURRENCE_FREQ_DAILY = 1;
+  RECURRENCE_FREQ_WEEKLY = 2;
+  RECURRENCE_FREQ_MONTHLY = 3;
+  RECURRENCE_FREQ_YEARLY = 4;
+}
+
+message Reminder {
+  int32 amount = 1;
+  ReminderUnit unit = 2;
+  ReminderAnchor anchor = 3;
+}
+
+message Recurrence {
+  RecurrenceFreq freq = 1;
+  int32 interval = 2;
+  repeated string by_day = 3;  // RFC codes: MO, TU, WE, TH, FR, SA, SU
+  int32 count = 4;             // 0 means unset
+  LocalDate until = 5;         // unset means no end
+}
+
+message SourceEvidence {
+  string field = 1;
+  string text = 2;
+}
+
+message FieldProvenance {
+  string field = 1;
+  Provenance provenance = 2;
+}
+
+message ValidationIssue {
+  string field = 1;
+  string code = 2;
+  IssueSeverity severity = 3;
+  string message = 4;
+  bool blocks_export = 5;
+  string suggestion = 6;
+}
+
+// The canonical event carried between services. Local date/time + IANA tz id;
+// NO single UTC timestamp is used as the primary representation.
+message Event {
+  string id = 1;
+  string source_event_id = 2;
+  string title = 3;
+  EventCategory category = 4;
+
+  LocalDate start_date = 5;
+  LocalTime start_time = 6;   // unset for all-day
+  LocalDate end_date = 7;
+  LocalTime end_time = 8;     // unset for all-day
+  string timezone = 9;        // IANA id
+  bool all_day = 10;
+
+  string location = 11;
+  string description = 12;
+  string organizer_name = 13;
+  string organizer_email = 14;
+  string url = 15;
+
+  Recurrence recurrence = 16;
+  repeated Reminder reminders = 17;
+
+  ValidationStatus validation_status = 18;
+  repeated ValidationIssue issues = 19;
+  repeated string missing_fields = 20;
+  repeated string ambiguity_flags = 21;
+  repeated SourceEvidence evidence = 22;
+  repeated FieldProvenance provenance = 23;
+}
+
+// Carried on every request for cross-service tracing.
+message RequestContext {
+  string request_id = 1;
+  string default_timezone = 2;
+  string locale = 3;
+}

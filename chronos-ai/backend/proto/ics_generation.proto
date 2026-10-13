@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package chronos.ics.v1;
+
+import "common.proto";
+
+message GenerateCalendarRequest {
+  chronos.common.v1.RequestContext context = 1;
+  repeated chronos.common.v1.Event events = 2;
+  string calendar_name = 3;
+}
+
+message GenerateCalendarResponse {
+  bytes ics_content = 1;      // serialized .ics bytes (UTF-8)
+  int32 event_count = 2;
+  string content_type = 3;    // e.g. "text/calendar; charset=utf-8"
+}
+
+message ValidateCalendarRequest {
+  chronos.common.v1.RequestContext context = 1;
+  bytes ics_content = 2;
+  repeated chronos.common.v1.Event expected_events = 3;  // canonical input to compare against
+}
+
+message ValidateCalendarResponse {
+  bool valid = 1;
+  int32 parsed_event_count = 2;
+  repeated chronos.common.v1.ValidationIssue issues = 3;
+}
+
+service ICSGenerationService {
+  rpc GenerateCalendar(GenerateCalendarRequest) returns (GenerateCalendarResponse);
+}
+
+service ICSValidationService {
+  rpc ValidateCalendar(ValidateCalendarRequest) returns (ValidateCalendarResponse);
+}

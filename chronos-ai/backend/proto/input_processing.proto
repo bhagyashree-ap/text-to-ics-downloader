@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package chronos.input.v1;
+
+import "common.proto";
+
+enum SourceType {
+  SOURCE_TYPE_UNSPECIFIED = 0;
+  SOURCE_TYPE_TEXT = 1;
+  SOURCE_TYPE_EMAIL = 2;
+  SOURCE_TYPE_PDF = 3;
+  SOURCE_TYPE_DOCX = 4;
+  SOURCE_TYPE_TXT = 5;
+  SOURCE_TYPE_EML = 6;
+}
+
+message ProcessTextRequest {
+  chronos.common.v1.RequestContext context = 1;
+  string text = 2;
+  string email_subject = 3;
+  string sender = 4;
+  SourceType source_type = 5;
+}
+
+message ProcessUploadedFileRequest {
+  chronos.common.v1.RequestContext context = 1;
+  string filename = 2;
+  bytes content = 3;
+  SourceType declared_type = 4;
+}
+
+message NormalizedSource {
+  string text = 1;             // cleaned, line-ending-normalized content
+  SourceType source_type = 2;
+  string email_subject = 3;
+  string sender = 4;
+  int32 character_count = 5;
+  bool truncated = 6;          // true if input limits forced truncation
+}
+
+message ProcessResponse {
+  NormalizedSource source = 1;
+}
+
+service InputProcessingService {
+  rpc ProcessText(ProcessTextRequest) returns (ProcessResponse);
+  rpc ProcessUploadedFile(ProcessUploadedFileRequest) returns (ProcessResponse);
+}
