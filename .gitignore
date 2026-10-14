@@ -1,15 +1,7 @@
-# Python
-backend/.venv/
+.venv/
+venv/
 __pycache__/
-*.pyc
-backend/.env
-
-# Node / Next.js
-frontend/node_modules/
-frontend/.next/
-frontend/out/
-frontend/.env.local
-
-# OS / editors
+*.py[cod]
+.env
 .DS_Store
 *.log
