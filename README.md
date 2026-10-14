@@ -1,114 +1,128 @@
-# Text → Calendar (Text-to-ICS Downloader)
+# Text to .ICS
 
-Paste any text that mentions one or more events (an email, a copied Excel/TSV row,
-a chat message, free-form notes), click **Download**, and get a single `.ics` file
-with all the events in it.
+A small web app that extracts events from pasted text, lets you review and edit them, and downloads an iCalendar (`.ics`) file.
 
-The flow is deliberately one-shot:
+## Features
 
+- Paste plain text, email text, or tab-separated schedule rows; analyze the text into up to 200 events.
+- Use the configured Llama chat-completions API for general text extraction. The default is Ollama at `http://localhost:11434/v1/chat/completions` with model `llama3`.
+- Parse supported tab-separated schedules and Zoom invitations deterministically, without an LLM request.
+- Extract event titles, dates, inclusive end dates, start/end times, locations, descriptions, time zones, recurrence rules, and explicitly requested reminders where present in the source.
+- Handle date ranges, repeated annual date ranges, explicit event durations, deadlines, scoped or message-wide reminder requests, and multi-event input.
+- Ignore blank form fields and common pasted UI output; do not treat reminder-only text as an event. The extraction prompt also instructs the model to ignore email timestamps, signatures, disclaimers, cancelled events, and superseded text.
+- Review and edit each event's title, start/end dates, start/end times, location, time zone, description, recurrence, and reminders. Add or remove events before export.
+- Choose common recurrence presets or enter a custom RFC 5545 RRULE. Invalid rules are rejected before calendar generation.
+- Select preset reminders or add a custom reminder in minutes, hours, days, or weeks. Duplicate intervals are removed.
+- See a preview of the current event dates, times, time zones, locations, recurrence, and reminders.
+- Calculate an end time from an explicitly extracted duration when the user has not manually set an end time. Editing the date, start time, or time zone recalculates that end. Explicitly entered end times and dates are preserved.
+- Generate an `.ics` calendar with event time zones, inclusive multi-day date ranges, recurrence rules, locations, descriptions, and `VALARM` reminders.
+- Validate dates, times, time zones, recurrence rules, durations, reminder ranges, and generated calendar serialization. Nonexistent or ambiguous local times around daylight-saving changes are rejected for review.
+- Return extraction evidence quotes and review notes in the analyze API response.
+
+Extraction depends on model output for general free-form text and can be incomplete or ambiguous. Review the extracted event details before downloading. If the LLM endpoint cannot be reached or returns invalid event data, analysis returns an error; structured schedule and supported Zoom parsing run locally.
+
+## Technology stack
+
+| Layer | Technology |
+| --- | --- |
+| Runtime | Python 3.12 (also used by the Docker image) |
+| Web server and API | FastAPI, served by Uvicorn |
+| Request and event validation | Pydantic 2 |
+| LLM HTTP client | HTTPX, using an OpenAI-compatible chat-completions endpoint such as Ollama |
+| Calendar generation | `icalendar` Python package |
+| Date/time and time zones | Python standard library `datetime`, `zoneinfo`, and `re` |
+| Frontend | One static HTML page with native JavaScript and CSS; no Node.js or frontend build step |
+| Container | Docker, based on `python:3.12-slim` |
+
+Dependencies and version ranges are listed in [`requirements.txt`](requirements.txt). The app does not use a database, authentication service, persistent storage, or a frontend framework.
+
+## Architecture
+
+```mermaid
+flowchart TD
+    U[User pastes text] --> UI[index.html<br/>native HTML, CSS, JavaScript]
+    UI -->|POST /api/v1/analyze<br/>text + browser time zone| API[FastAPI app<br/>main.py]
+    API --> A[analysis.py<br/>normalize and orchestrate extraction]
+    A --> C{Input format}
+    C -->|Supported TSV schedule| T[event_utils.py<br/>structured row parser]
+    C -->|Supported Zoom invitation| Z[event_utils.py<br/>Zoom parser]
+    C -->|Other text| L[Ollama or OpenAI-compatible Llama endpoint<br/>HTTPX JSON chat completion]
+    T --> A
+    Z --> A
+    L --> A
+    A --> V[Pydantic event validation<br/>dates, times, time zones, durations,<br/>recurrence, reminders, evidence, notes]
+    V -->|events + preview data| UI
+    UI -->|User edits events| UI
+    UI -->|POST /api/v1/calendar/generate<br/>edited events + browser time zone| X[calendar_export.py]
+    X --> E[event_utils.py<br/>time-zone and RRULE validation]
+    E --> I[icalendar serialization<br/>VEVENT + VALARM]
+    I -->|text/calendar attachment| U
 ```
-paste text  →  click Download
-            →  Qwen3 (vLLM) extracts ALL events (title + date/time)
-            →  reminder in the text? apply it per event.
-               none found?           ONE popup asks (choice applies to all events).
-            →  one .ics with every event downloads to your Downloads folder.
-```
 
-- Extracts **multiple events** into **one `.ics`** — no review/edit screen.
-- Uses a **reminder found in the text** ("remind me 2 days before") when present;
-  otherwise asks once via a popup (None / at time / 10 min / 1 hour / 1 day before).
-- Produces a standards-compliant iCalendar file (RFC 5545) with `VEVENT` + `VALARM`.
-- Works **today** with a built-in rules-based fallback — and upgrades to **Qwen3 on vLLM**
-  (LoRA-ready) by changing a single environment variable. No code changes.
+### Request flow
 
-> This is the simple MVP. The architecture is intentionally one Python service + one
-> Next.js frontend. The full roadmap (gRPC split, Postgres, tiered LLM routing, OCR,
-> OAuth insert, eval harness) layers in on top without a rewrite.
+1. `main.py` serves `index.html` at `/` and exposes `/api/v1/health`.
+2. The browser sends the pasted text and its detected IANA time zone to `POST /api/v1/analyze`.
+3. `analysis.py` cleans HTML-like pasted content and selects a deterministic parser for recognized TSV schedules or supported Zoom invitations. Otherwise, it sends a JSON-constrained extraction request to `LLAMA_API_URL` using `LLAMA_MODEL`.
+4. The analysis pipeline normalizes model fields, applies deterministic date-range, deadline, duration, and reminder handling, validates the event models, deduplicates equivalent reminders, and returns events with evidence and review notes.
+5. The browser renders editable event cards and a preview. Event time zones can be selected independently; the browser time zone is the initial fallback.
+6. On download, the browser sends the edited event list to `POST /api/v1/calendar/generate`.
+7. `calendar_export.py` and `event_utils.py` validate and serialize the events into an `.ics` attachment. The browser downloads it as `events.ics`.
 
-## Architecture (MVP)
+### Source files
 
-```
-[ Next.js frontend ]           textarea + Download button + reminder popup
-        │  HTTP/JSON
-        ▼
-[ FastAPI backend ]            one Python service
-   ├── extractor.py            LLM (Qwen3 on vLLM, OpenAI-compatible) + rules fallback
-   ├── validator.py            dateparser + python-dateutil normalize/validate, RRULE
-   └── ics_builder.py          icalendar: VEVENT + VALARM, correct MIME/escaping
-```
+- `main.py` — FastAPI app, HTML page route, and health route.
+- `analysis.py` — analyze endpoint, LLM request, extraction orchestration, normalization, and event validation.
+- `event_utils.py` — text cleanup, structured/Zoom parsers, date/time/time-zone helpers, duration calculation, reminder extraction, and RRULE validation.
+- `calendar_export.py` — calendar endpoint and `VEVENT`/`VALARM` generation.
+- `models.py` — Pydantic request and event data models.
+- `index.html` — complete browser interface and client-side preview/edit/download behavior.
+- `requirements.txt` — Python dependencies.
+- `Dockerfile` — single-container build and Uvicorn launch.
 
-## The downloaded file
+## Run locally
 
-The UI produces a single **`.ics`** file (universal iCalendar — opens in Apple
-Calendar and Outlook, imports into Google Calendar). It saves to the browser's
-normal Downloads folder, triggered via a Blob with `text/calendar` MIME.
-
-## Quick start
-
-### 1. Backend
+Requires Python 3.12+ and Ollama for LLM-based free-form extraction. Structured TSV and supported Zoom formats are parsed locally.
 
 ```bash
-cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env            # optional: configure vLLM / Qwen3
-uvicorn app.main:app --reload --port 8000
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+ollama pull llama3
+ollama serve
 ```
 
-Backend runs at http://localhost:8000 (docs at `/docs`).
-
-### 2. Frontend
+In another terminal, from the project directory:
 
 ```bash
-cd frontend
-npm install
-npm run dev
+source .venv/bin/activate
+uvicorn main:app --reload
 ```
 
-Frontend runs at http://localhost:3000.
+Open <http://127.0.0.1:8000>. The API documentation is at <http://127.0.0.1:8000/docs>.
 
-## Wiring up Qwen3-14B/8B on vLLM (optional — the app works without it)
-
-Start vLLM with an OpenAI-compatible server (optionally with a LoRA adapter):
+Configure a different OpenAI-compatible endpoint or model with environment variables:
 
 ```bash
-vllm serve Qwen/Qwen3-14B \
-  --enable-lora \
-  --lora-modules text2ics=/path/to/your/lora-adapter
+LLAMA_API_URL=http://localhost:11434/v1/chat/completions
+LLAMA_MODEL=llama3
 ```
 
-Then set `backend/.env`:
+## Run with Docker
 
-```ini
-LLM_BASE_URL=http://localhost:8000/v1   # your vLLM server
-LLM_API_KEY=EMPTY                        # vLLM ignores the key, but the client needs one
-LLM_MODEL=Qwen/Qwen3-14B                 # or "text2ics" to use your LoRA adapter
+```bash
+docker build -t text-to-ics .
+docker run --rm -p 8000:8000 \
+  -e LLAMA_API_URL=http://host.docker.internal:11434/v1/chat/completions \
+  -e LLAMA_MODEL=llama3 \
+  text-to-ics
 ```
 
-- Switching from the base model to your **LoRA adapter** is just changing `LLM_MODEL`
-  to the adapter name you registered — no code change.
-- The extractor asks vLLM for **schema-constrained JSON** (guided decoding) so Qwen3
-  returns clean, valid events. Qwen3 "thinking" is disabled for extraction.
-- If `LLM_BASE_URL` is unset or the server is unreachable, the backend automatically
-  uses the **rules-based fallback** so the app stays functional.
+The Ollama service must be reachable from the container. `host.docker.internal` is the usual host address on Docker Desktop.
 
-## Project layout
+## API endpoints
 
-```
-text-to-ics-downloader/
-├── backend/
-│   ├── app/
-│   │   ├── main.py          FastAPI app + routes (/extract, /ics, /health)
-│   │   ├── schema.py        Pydantic event schema (shared contract)
-│   │   ├── extractor.py     vLLM/Qwen3 client + rules-based fallback
-│   │   ├── validator.py     date/recurrence normalization + confidence
-│   │   ├── ics_builder.py   icalendar VEVENT + VALARM builder
-│   │   └── gcal.py          "Add to Google Calendar" link builder
-│   ├── requirements.txt
-│   └── .env.example
-└── frontend/
-    ├── app/                 Next.js App Router UI
-    ├── lib/                 API client + download helpers
-    ├── package.json
-    └── ... (config)
-```
+- `GET /api/v1/health` — liveness response.
+- `POST /api/v1/analyze` — accepts `{ "text": "...", "timezone": "America/New_York" }`; returns extracted events, evidence, review notes, and the resolved time zone.
+- `POST /api/v1/calendar/generate` — accepts `{ "events": [...], "timezone": "..." }`; returns an `.ics` attachment.
+- `GET /docs` — FastAPI's interactive API documentation.
